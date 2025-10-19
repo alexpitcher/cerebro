@@ -1,0 +1,101 @@
+"""Integration-style tests for the Cerebro API."""
+
+from __future__ import annotations
+
+import pytest
+import fakeredis
+from flask import Flask
+
+from manager.config import AppConfig
+from manager.queue import JobQueue, JobStatus
+from manager.server import create_api_blueprint, register_error_handlers
+
+
+@pytest.fixture()
+def app() -> Flask:
+    config = AppConfig(
+        redis_host="test",
+        redis_port=6379,
+        redis_db=0,
+        redis_job_timeout=1,
+        redis_block_timeout=1,
+        job_ttl_seconds=60,
+    )
+    fake_redis = fakeredis.FakeRedis(decode_responses=True)
+    job_queue = JobQueue(config=config, redis_client=fake_redis)
+
+    flask_app = Flask(__name__)
+    flask_app.config["TESTING"] = True
+    flask_app.config["APP_CONFIG"] = config
+    flask_app.config["JOB_QUEUE"] = job_queue
+    flask_app.register_blueprint(create_api_blueprint(job_queue))
+    register_error_handlers(flask_app)
+    return flask_app
+
+
+@pytest.fixture()
+def client(app: Flask):
+    return app.test_client()
+
+
+def _submit_sample_job(client):
+    response = client.post(
+        "/submit_job",
+        json={
+            "messages": [{"role": "user", "content": "Hello, Cerebro!"}],
+            "metadata": {"priority": "normal"},
+        },
+    )
+    assert response.status_code == 201
+    payload = response.get_json()
+    assert payload is not None and "job_id" in payload
+    return payload["job_id"]
+
+
+def test_job_lifecycle(client):
+    job_id = _submit_sample_job(client)
+
+    # Worker pulls job
+    response = client.post("/get_job")
+    assert response.status_code == 200
+    job_payload = response.get_json()
+    assert job_payload is not None
+    assert job_payload["job_id"] == job_id
+    assert job_payload["messages"][0]["content"] == "Hello, Cerebro!"
+
+    # Worker completes job successfully
+    completion = client.post(
+        "/complete_job",
+        json={
+            "job_id": job_id,
+            "status": JobStatus.COMPLETED.value,
+            "result": {"output": "Done"},
+        },
+    )
+    assert completion.status_code == 200
+    job_data = completion.get_json()
+    assert job_data is not None
+    assert job_data["status"] == JobStatus.COMPLETED.value
+    assert job_data["result"] == {"output": "Done"}
+
+    # Client can poll for result
+    result_response = client.get(f"/get_result/{job_id}")
+    assert result_response.status_code == 200
+    result_payload = result_response.get_json()
+    assert result_payload is not None
+    assert result_payload["result"] == {"output": "Done"}
+
+
+def test_stats_and_health(client):
+    stats_before = client.get("/stats")
+    assert stats_before.status_code == 200
+    assert stats_before.get_json() == {"queued": 0, "processing": 0}
+
+    _submit_sample_job(client)
+    stats_after_submit = client.get("/stats")
+    payload = stats_after_submit.get_json()
+    assert payload == {"queued": 1, "processing": 0}
+
+    health = client.get("/health")
+    assert health.status_code == 200
+    assert health.get_json() == {"status": "ok"}
