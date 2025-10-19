@@ -64,10 +64,13 @@ class StructuredLogger(logging.LoggerAdapter):
     """Logger adapter that injects worker/job metadata into log records."""
 
     def process(self, msg: str, kwargs: dict[str, Any]) -> tuple[str, dict[str, Any]]:
-        extra = kwargs.setdefault("extra", {})
-        extra.setdefault("worker_id", extra.get("worker_id", "unknown"))
-        extra.setdefault("job_id", extra.get("job_id", "-"))
-        extra.setdefault("status", extra.get("status", "n/a"))
+        base_extra = dict(self.extra) if hasattr(self, "extra") else {}
+        extra = kwargs.get("extra", {})
+        merged = {**base_extra, **extra}
+        merged.setdefault("worker_id", base_extra.get("worker_id", "unknown"))
+        merged.setdefault("job_id", merged.get("job_id", "-"))
+        merged.setdefault("status", merged.get("status", "n/a"))
+        kwargs["extra"] = merged
         return msg, kwargs
 
 
@@ -112,6 +115,10 @@ class CerebroWorker:
 
             job = self._fetch_job_with_retry()
             if job is None:
+                self.logger.info(
+                    "No job available; sleeping before next poll.",
+                    extra={"status": "idle"},
+                )
                 self.stop_event.wait(self.config.poll_interval)
                 continue
 
@@ -176,6 +183,7 @@ class CerebroWorker:
     def _fetch_job(self) -> Optional[dict[str, Any]]:
         response = self.session.post(
             f"{self.config.cerebro_url}/get_job",
+            headers={"X-Worker-ID": self.config.worker_id},
             timeout=self.config.request_timeout,
         )
         if response.status_code == 204:
@@ -277,7 +285,12 @@ class CerebroWorker:
         backoff = 1.0
         while not self.stop_event.is_set():
             try:
-                response = self.session.post(url, json=payload, timeout=self.config.request_timeout)
+                response = self.session.post(
+                    url,
+                    json=payload,
+                    timeout=self.config.request_timeout,
+                    headers={"X-Worker-ID": self.config.worker_id},
+                )
                 response.raise_for_status()
                 self.logger.info(
                     "Reported job status to Cerebro.",

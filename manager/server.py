@@ -35,10 +35,13 @@ def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
             LOGGER.exception("Failed to submit job")
             return _error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
 
+        LOGGER.info("Accepted job %s (messages=%s)", job_id, len(messages))
         return jsonify({"job_id": job_id, "status": JobStatus.QUEUED.value}), HTTPStatus.CREATED
 
     @api.route("/get_job", methods=["POST"])
     def get_job() -> Any:
+        worker_id = request.headers.get("X-Worker-ID", "unknown")
+        LOGGER.info("Worker %s requested next job.", worker_id)
         try:
             job = job_queue.get_next_job()
         except JobQueueError as exc:
@@ -46,8 +49,23 @@ def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
             return _error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
 
         if job is None:
+            queue_stats: dict[str, Any] | None = None
+            try:
+                queue_stats = job_queue.get_stats()
+            except JobQueueError:
+                LOGGER.warning("Unable to gather queue stats while responding 204 to worker %s", worker_id, exc_info=True)
+            if queue_stats:
+                LOGGER.info(
+                    "No jobs available for worker %s (queued=%s, processing=%s).",
+                    worker_id,
+                    queue_stats.get("queued"),
+                    queue_stats.get("processing"),
+                )
+            else:
+                LOGGER.info("No jobs available for worker %s.", worker_id)
             return "", HTTPStatus.NO_CONTENT
 
+        LOGGER.info("Assigned job %s to worker %s.", job["job_id"], worker_id)
         return jsonify(job), HTTPStatus.OK
 
     @api.route("/complete_job", methods=["POST"])
@@ -69,6 +87,8 @@ def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
         if status not in {JobStatus.COMPLETED, JobStatus.FAILED}:
             return _error_response("`status` must be 'completed' or 'failed'.", HTTPStatus.BAD_REQUEST)
 
+        worker_id = request.headers.get("X-Worker-ID", "unknown")
+
         try:
             job_record = job_queue.complete_job(job_id=job_id, status=status, result=result, error=error)
         except JobNotFound as exc:
@@ -77,6 +97,12 @@ def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
             LOGGER.exception("Failed to complete job %s", job_id)
             return _error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
 
+        LOGGER.info(
+            "Worker %s reported job %s as %s.",
+            worker_id,
+            job_id,
+            status.value,
+        )
         return jsonify(_serialize_job(job_record)), HTTPStatus.OK
 
     @api.route("/get_result/<job_id>", methods=["GET"])
