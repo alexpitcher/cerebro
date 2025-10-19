@@ -17,22 +17,25 @@ Cerebro is a lightweight distributed job queue tailored for LLM workloads. It ex
    ```bash
    cp .env.example .env
    ```
-2. Start the stack with Docker Compose:
+2. Authenticate with GHCR (replace TOKEN with a PAT that has `read:packages`):
    ```bash
-   docker compose up --build
+   echo TOKEN | docker login ghcr.io -u <your-github-username> --password-stdin
    ```
-3. The API is available at `http://localhost:5000`.
+3. Start the stack with Docker Compose:
+   ```bash
+   docker compose up -d
+   ```
+4. The API is available at `http://localhost:5000`.
 
 ## Docker Compose
 
-The repository includes a ready-to-run Compose file that starts the Cerebro manager alongside Redis:
+The repository includes a ready-to-run Compose file that pulls the published GHCR image and starts Cerebro alongside Redis:
 
 ```yaml
-version: "3.9"
-
 services:
   manager:
-    build: .
+    image: ghcr.io/alexpitcher/cerebro-manager:${CEREBRO_TAG:-latest}
+    restart: unless-stopped
     ports:
       - "${API_PORT:-5000}:5000"
     environment:
@@ -48,6 +51,7 @@ services:
 
   redis:
     image: redis:7.2-alpine
+    restart: unless-stopped
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
@@ -57,7 +61,7 @@ volumes:
   redis_data:
 ```
 
-Run `docker compose up --build` from the project root to start both services.
+Run `docker compose up -d` from the project root to start both services. To build the image from source instead, run `docker build -t ghcr.io/<you>/cerebro-manager:dev .` and update the `image` reference accordingly.
 
 ## Project Layout
 
