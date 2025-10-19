@@ -65,34 +65,3 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-
-      - name: Ensure GHCR packages are public
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PACKAGE_NAMES: "cerebro cerebro-manager"
-        run: |
-          set -euo pipefail
-          for package in ${PACKAGE_NAMES}; do
-            echo "Setting visibility for package '${package}'..."
-            if gh api \
-              --method PATCH \
-              -H "Accept: application/vnd.github+json" \
-              "/user/packages/container/${package}/visibility" \
-              -f visibility=public \
-              >/dev/null 2>&1; then
-              echo "Marked ${package} as public (user scope)."
-              continue
-            fi
-
-            if gh api \
-              --method PATCH \
-              -H "Accept: application/vnd.github+json" \
-              "/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/${package}/visibility" \
-              -f visibility=public \
-              >/dev/null 2>&1; then
-              echo "Marked ${package} as public (org scope)."
-              continue
-            fi
-
-            echo "Package '${package}' not found or already removed; skipping."
-          done
