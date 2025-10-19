@@ -66,20 +66,19 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-      - name: Set package visibility to public
+      - name: Ensure GHCR package is public
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PACKAGE_NAME: cerebro
         run: |
-          OWNER="${{ github.repository_owner }}"
-          OWNER_TYPE="${{ github.event.repository.owner.type }}"
-          if [[ "${OWNER_TYPE}" == "Organization" ]]; then
-            URL="https://api.github.com/orgs/${OWNER}/packages/container/${PACKAGE_NAME}/visibility"
-          else
-            URL="https://api.github.com/user/packages/container/${PACKAGE_NAME}/visibility"
-          fi
-          curl -sSf -X PATCH \
+          set -euo pipefail
+          gh api \
+            --method PATCH \
             -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
-            "${URL}" \
-            -d '{"visibility":"public"}'
+            "/user/packages/container/${PACKAGE_NAME}/visibility" \
+            -f visibility=public \
+            || gh api \
+              --method PATCH \
+              -H "Accept: application/vnd.github+json" \
+              "/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/${PACKAGE_NAME}/visibility" \
+              -f visibility=public
