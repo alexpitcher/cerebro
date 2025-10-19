@@ -15,4 +15,4 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["python", "-m", "app.server"]
+CMD ["python", "-m", "manager.server"]
