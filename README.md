@@ -34,7 +34,7 @@ The repository includes a ready-to-run Compose file that pulls the published GHC
 ```yaml
 services:
   manager:
-    image: ghcr.io/alexpitcher/cerebro-manager:${CEREBRO_TAG:-latest}
+    image: ghcr.io/alexpitcher/cerebro:${CEREBRO_TAG:-latest}
     restart: unless-stopped
     ports:
       - "${API_PORT:-5000}:5000"
@@ -61,7 +61,7 @@ volumes:
   redis_data:
 ```
 
-Run `docker compose up -d` from the project root to start both services. To build the image from source instead, run `docker build -t ghcr.io/<you>/cerebro-manager:dev .` and update the `image` reference accordingly.
+Run `docker compose up -d` from the project root to start both services. To build the image from source instead, run `docker build -t ghcr.io/<you>/cerebro:dev .` and update the `image` reference accordingly.
 
 ## Project Layout
 

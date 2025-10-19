@@ -1,6 +1,6 @@
 services:
   manager:
-    image: ghcr.io/alexpitcher/cerebro-manager:${CEREBRO_TAG:-latest}
+    image: ghcr.io/alexpitcher/cerebro:${CEREBRO_TAG:-latest}
     restart: unless-stopped
     ports:
       - "${API_PORT:-5000}:5000"
