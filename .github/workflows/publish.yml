@@ -8,6 +8,8 @@ on:
         required: true
         default: "0.0.1"
   push:
+    branches:
+      - main
     tags:
       - "v*"
 
@@ -30,10 +32,12 @@ jobs:
       - name: Set version
         id: version
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             VERSION="${{ github.event.inputs.version }}"
-          else
+          elif [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(git rev-parse --short HEAD)"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
@@ -52,6 +56,7 @@ jobs:
           tags: |
             type=raw,value=${{ steps.version.outputs.version }}
             type=raw,value=latest
+            type=sha,format=short
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
