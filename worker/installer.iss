@@ -22,10 +22,6 @@ Source: "dist\BUILD.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\Cerebro Worker"; Filename: "{app}\{#MyAppExe}"
-Name: "{autostart}\Cerebro Worker"; Filename: "{app}\{#MyAppExe}"; Tasks: autostart
-
-[Tasks]
-Name: autostart; Description: "Run Cerebro Worker when you log in"; GroupDescription: "Startup options"; Flags: unchecked
 
 [Run]
 Filename: "{app}\{#MyAppExe}"; Description: "Launch Cerebro Worker"; Flags: nowait postinstall skipifsilent
