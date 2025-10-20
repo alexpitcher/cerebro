@@ -8,13 +8,8 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from PyQt6.QtCore import QObject, QPoint, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QIcon, QPainter, QPixmap
-from PyQt6.QtWidgets import (
-    QAction,
-    QApplication,
-    QMenu,
-    QSystemTrayIcon,
-)
+from PyQt6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
+from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 STATUS_ICONS = {
     "stopped": QColor("#ef4444"),  # red
