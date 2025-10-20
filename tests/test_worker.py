@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 import responses
 
-from worker.worker_engine import WorkerConfig, WorkerCore, WorkerCallbacks
+from worker.worker_engine import WorkerConfig, WorkerCore, WorkerCallbacks, WorkerStartupError
 
 
 @pytest.fixture()
@@ -106,3 +106,21 @@ def test_loop_marks_error_result_as_failure(worker: WorkerCore, monkeypatch) -> 
 
     worker._loop()
     assert failures and "Boom" in failures[0]
+
+
+@responses.activate
+def test_ensure_model_prefers_llama_when_phi_missing(worker: WorkerCore):
+    worker.config.model_name = "nonexistent"
+    responses.get(
+        "http://localhost:11434/api/tags",
+        json={"models": [{"name": "qwen2:1.5b"}, {"name": "llama3.2:3b"}]},
+    )
+    worker._ensure_model()
+    assert worker.config.model_name == "llama3.2:3b"
+
+
+@responses.activate
+def test_ensure_model_raises_when_ollama_unreachable(worker: WorkerCore):
+    responses.get("http://localhost:11434/api/tags", status=503)
+    with pytest.raises(WorkerStartupError):
+        worker._ensure_model()

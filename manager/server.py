@@ -44,10 +44,12 @@ def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
 
         metadata = payload.get("metadata") or {}
         hostname = payload.get("hostname") or metadata.get("hostname") or request.remote_addr
+        model_name = payload.get("model") or metadata.get("model")
         metadata.update(
             {
                 "hostname": hostname,
                 "user_agent": request.headers.get("User-Agent"),
+                "model": model_name,
             }
         )
         try:
@@ -56,7 +58,7 @@ def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
             LOGGER.exception("Failed to register worker %s", worker_id)
             return _error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
 
-        LOGGER.info("Worker %s registered (host=%s)", worker_id, hostname)
+        LOGGER.info("Worker %s registered (host=%s, model=%s)", worker_id, hostname, model_name)
         return jsonify({"status": "registered"}), HTTPStatus.CREATED
 
     @api.route("/deregister_worker", methods=["POST"])

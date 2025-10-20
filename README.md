@@ -10,6 +10,7 @@ Cerebro is a lightweight distributed job queue tailored for LLM workloads. It ex
 - Health and stats endpoints for monitoring
 - Configurable via environment variables or `.env` file
 - Docker Compose stack with Flask manager service and Redis
+- Windows worker automatically detects installed Ollama models and picks the closest match
 
 ## Quick Start
 
@@ -171,6 +172,9 @@ All configuration values can be supplied via environment variables or a `.env` f
 | `JOB_TTL_SECONDS`    | `3600`  | TTL for job metadata in Redis        |
 | `JOB_HISTORY_SIZE`   | `50`    | Number of recent jobs stored for the dashboard |
 | `MANAGER_DEBUG_LOG`  | `false` | When `true`, log full prompts/results and every worker poll |
+| `MODEL_NAME`         | `phi4-mini` | Desired Ollama model (worker falls back to closest installed match) |
+
+If the requested Ollama model is unavailable, the worker queries `/api/tags` and switches to the best available option (preferring `phi*`, then `llama*`, `qwen*`, `gemma*`, `deepseek*`).
 
 ## License
 

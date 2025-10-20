@@ -11,6 +11,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
+from urllib.parse import urlparse, urlunparse
 
 import requests
 from dotenv import load_dotenv
@@ -20,6 +21,11 @@ from requests.exceptions import RequestException
 LOGGER = logging.getLogger("cerebro.worker")
 
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+MODEL_PREFERENCE = ["phi", "llama", "qwen", "gemma", "deepseek"]
+
+
+class WorkerStartupError(Exception):
+    """Raised when the worker cannot start due to configuration or environment issues."""
 
 
 # --------------------------------------------------------------------------- #
@@ -190,6 +196,11 @@ class WorkerCore:
         """Start polling for jobs until shutdown."""
         self._update_state("starting")
         self.logger.info("Worker started.", extra={"status": "startup"})
+        try:
+            self._ensure_model()
+        except WorkerStartupError as exc:
+            self.logger.error("Worker startup aborted: %s", exc, extra={"status": "error"})
+            return
         self._register_worker()
         try:
             self._loop()
@@ -289,6 +300,69 @@ class WorkerCore:
         end = time.time() + seconds
         while time.time() < end and not self.stop_event.is_set():
             time.sleep(min(0.1, end - time.time()))
+
+    # ------------------------------------------------------------------ #
+    # Ollama helpers
+    # ------------------------------------------------------------------ #
+
+    def _ollama_endpoint(self, endpoint: str) -> str:
+        parsed = urlparse(self.config.ollama_url)
+        path = parsed.path or ""
+        if path.endswith("/chat"):
+            base = path[:-5]
+            if not base.endswith("/"):
+                base += "/"
+            new_path = f"{base}{endpoint}"
+        else:
+            api_base = "/api"
+            if "/api/" in path:
+                api_base = path[: path.index("/api/") + len("/api")]
+            new_path = f"{api_base}/{endpoint}".replace("//", "/")
+        return urlunparse(parsed._replace(path=new_path, params="", query="", fragment=""))
+
+    def _ensure_model(self) -> None:
+        tags_url = self._ollama_endpoint("tags")
+        try:
+            response = requests.get(tags_url, timeout=self.config.request_timeout)
+            response.raise_for_status()
+        except RequestException as exc:
+            raise WorkerStartupError(f"Ollama unavailable at {tags_url}: {exc}") from exc
+
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise WorkerStartupError("Invalid JSON returned by Ollama /api/tags") from exc
+
+        available_models: list[str] = []
+        for entry in payload.get("models", []):
+            for key in ("name", "model", "tag"):
+                value = entry.get(key)
+                if value:
+                    available_models.append(value)
+                    break
+
+        if not available_models:
+            raise WorkerStartupError("No models available from Ollama.")
+
+        if self.config.model_name in available_models:
+            return
+
+        chosen = self._choose_model(available_models)
+        self.logger.warning(
+            "Model '%s' not found in Ollama. Using '%s' instead.",
+            self.config.model_name,
+            chosen,
+            extra={"status": "warning"},
+        )
+        self.config.model_name = chosen
+
+    def _choose_model(self, available: list[str]) -> str:
+        lower_map = [(model.lower(), model) for model in available]
+        for prefix in MODEL_PREFERENCE:
+            for lower_name, original in lower_map:
+                if prefix in lower_name:
+                    return original
+        return available[0]
 
     # ------------------------------------------------------------------ #
     # Networking helpers
@@ -517,6 +591,7 @@ class WorkerCore:
         payload = {
             "worker_id": self.config.worker_id,
             "hostname": socket.gethostname(),
+            "model": self.config.model_name,
         }
         try:
             response = self.session.post(
@@ -532,6 +607,7 @@ class WorkerCore:
     def _deregister_worker(self) -> None:
         payload = {
             "worker_id": self.config.worker_id,
+            "model": self.config.model_name,
         }
         try:
             response = self.session.post(

@@ -114,7 +114,7 @@ def test_stats_and_health(client):
 def test_worker_registration(client):
     register = client.post(
         "/register_worker",
-        json={"worker_id": "worker-abc", "hostname": "test-host"},
+        json={"worker_id": "worker-abc", "hostname": "test-host", "model": "phi4-mini"},
     )
     assert register.status_code == 201
 
@@ -122,7 +122,7 @@ def test_worker_registration(client):
     assert workers.status_code == 200
     data = workers.get_json()
     assert isinstance(data, list)
-    assert any(entry["worker_id"] == "worker-abc" for entry in data)
+    assert any(entry["worker_id"] == "worker-abc" and entry["metadata"].get("model") == "phi4-mini" for entry in data)
 
     deregister = client.post("/deregister_worker", json={"worker_id": "worker-abc"})
     assert deregister.status_code == 200
