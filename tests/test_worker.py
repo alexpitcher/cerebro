@@ -84,3 +84,25 @@ def test_parse_ollama_response_requires_message(worker: WorkerCore) -> None:
             return {"not_message": {}}
 
     assert worker._parse_ollama_response(DummyResponse(), "test-job") is None
+
+
+def test_loop_marks_error_result_as_failure(worker: WorkerCore, monkeypatch) -> None:
+    job = {"job_id": "abc123", "messages": [{"role": "user", "content": "Ping"}]}
+    failures: list[str] = []
+
+    def fake_fetch():
+        worker.stop_event.set()
+        return job
+
+    def fake_process(_job):
+        return {"error": "Boom"}
+
+    def fake_failure(job_id: str, message: str):
+        failures.append(message)
+
+    monkeypatch.setattr(worker, "_fetch_job_with_retry", fake_fetch)
+    monkeypatch.setattr(worker, "_process_job", fake_process)
+    monkeypatch.setattr(worker, "_report_failure", fake_failure)
+
+    worker._loop()
+    assert failures and "Boom" in failures[0]

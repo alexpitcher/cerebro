@@ -270,6 +270,17 @@ class WorkerCore:
                 self._report_failure(job_id, "Job processing failed without result.")
                 continue
 
+            if isinstance(result, dict) and result.get("error"):
+                error_message = str(result.get("error"))
+                self.logger.warning(
+                    "Job %s failed: %s",
+                    job_id,
+                    error_message,
+                    extra={"status": "failed", "job_id": job_id},
+                )
+                self._report_failure(job_id, error_message)
+                continue
+
             self._report_success(job_id, result)
 
     def _sleep(self, seconds: float) -> None:
