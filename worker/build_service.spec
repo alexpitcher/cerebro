@@ -7,7 +7,7 @@ project_dir = spec_path.parent
 service_entry = project_dir / "service_app.py"
 
 datas = [
-    (str(project_dir / "config.json"), ""),
+    (str(project_dir / "config.json"), "."),
     (str(project_dir / "resources"), "resources"),
 ]
 

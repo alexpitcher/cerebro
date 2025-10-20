@@ -6,9 +6,9 @@ spec_path = pathlib.Path(globals().get("__file__", "worker/build.spec")).resolve
 project_dir = spec_path.parent
 gui_entry = project_dir / "gui_worker.py"
 datas = [
-    (str(project_dir / "config.json"), ""),
+    (str(project_dir / "config.json"), "."),
     (str(project_dir / "resources"), "resources"),
-    (str(project_dir / "gui_requirements.txt"), ""),
+    (str(project_dir / "gui_requirements.txt"), "."),
     (str(project_dir / "resources" / "icons"), "resources/icons"),
 ]
 
