@@ -10,7 +10,7 @@ from typing import Any
 from flask import Blueprint, Flask, jsonify, request
 from werkzeug.exceptions import BadRequest
 
-from .config import AppConfig
+from .config import AppConfig, configure_logging
 from .queue import JobNotFound, JobQueue, JobQueueError, JobRecord, JobStatus
 
 LOGGER = logging.getLogger(__name__)
@@ -228,6 +228,7 @@ def _preview_result(result: dict[str, Any] | None) -> str | None:
 def create_wsgi_app() -> Flask:
     """Create an app instance for WSGI servers."""
     config = AppConfig.from_env()
+    configure_logging(config)
     app = Flask(__name__)
     app.config["APP_CONFIG"] = config
     job_queue = JobQueue(config=config)
