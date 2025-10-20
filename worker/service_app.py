@@ -115,7 +115,7 @@ class CerebroWorkerService(win32serviceutil.ServiceFramework):
 
 
 def main() -> None:
-if len(sys.argv) == 1:
+    if len(sys.argv) == 1:
         if not servicemanager:
             raise ImportError(
                 "servicemanager is unavailable. Run this binary only on Windows and ensure pywin32 is installed."
