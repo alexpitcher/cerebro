@@ -2,7 +2,8 @@
 
 import pathlib
 
-project_dir = pathlib.Path(__file__).resolve().parent
+spec_path = pathlib.Path(globals().get("__file__", "worker/build.spec")).resolve()
+project_dir = spec_path.parent
 gui_entry = project_dir / "gui_worker.py"
 datas = [
     (str(project_dir / "config.json"), ""),

@@ -2,7 +2,8 @@
 
 import pathlib
 
-project_dir = pathlib.Path(__file__).resolve().parent
+spec_path = pathlib.Path(globals().get("__file__", "worker/build_service.spec")).resolve()
+project_dir = spec_path.parent
 service_entry = project_dir / "service_app.py"
 
 datas = [
