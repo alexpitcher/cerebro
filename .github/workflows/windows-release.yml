@@ -1,0 +1,68 @@
+name: Build Windows Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install -r worker/gui_requirements.txt
+          pip install pyinstaller
+
+      - name: Build GUI executable
+        run: |
+          pyinstaller worker/build.spec
+
+      - name: Build service executable
+        run: |
+          pyinstaller worker/build_service.spec
+
+      - name: Stage bundle
+        shell: pwsh
+        run: |
+          $bundle = "dist/CerebroWorkerBundle"
+          New-Item -ItemType Directory -Path $bundle -Force | Out-Null
+          Copy-Item dist/CerebroWorker.exe $bundle/ -Force
+          Copy-Item dist/CerebroWorkerService.exe $bundle/ -Force
+          Copy-Item worker/config.json $bundle/ -Force
+          Copy-Item .env.example $bundle/ -Force
+          Copy-Item worker/install_service.ps1 $bundle/ -Force
+          Copy-Item worker/BUILD.md $bundle/ -Force
+          Compress-Archive -Path "$bundle/*" -DestinationPath dist/CerebroWorkerBundle.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cerebro-worker-windows
+          path: |
+            dist/CerebroWorker.exe
+            dist/CerebroWorkerService.exe
+            dist/CerebroWorkerBundle.zip
+
+      - name: Create Release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/CerebroWorker.exe
+            dist/CerebroWorkerService.exe
+            dist/CerebroWorkerBundle.zip

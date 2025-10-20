@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 import responses
 
-from worker.worker import CerebroWorker, WorkerConfig
+from worker.worker_engine import WorkerConfig, WorkerCore, WorkerCallbacks
 
 
 @pytest.fixture()
@@ -21,18 +21,20 @@ def worker_config() -> WorkerConfig:
         gpu_threshold=95.0,
         max_backoff=0.2,
         request_timeout=1.0,
+        check_gpu=False,
     )
 
 
 @pytest.fixture()
-def worker(worker_config: WorkerConfig) -> CerebroWorker:
-    instance = CerebroWorker(worker_config)
+def worker(worker_config: WorkerConfig) -> WorkerCore:
+    callbacks = WorkerCallbacks()
+    instance = WorkerCore(worker_config, callbacks=callbacks)
     instance.logger.logger.setLevel("CRITICAL")  # type: ignore[attr-defined]
     return instance
 
 
 @responses.activate
-def test_process_job_success(worker: CerebroWorker, worker_config: WorkerConfig) -> None:
+def test_process_job_success(worker: WorkerCore, worker_config: WorkerConfig) -> None:
     """Ensure successful Ollama responses are propagated."""
     responses.post(
         worker_config.ollama_url,
@@ -55,7 +57,7 @@ def test_process_job_success(worker: CerebroWorker, worker_config: WorkerConfig)
 
 
 @responses.activate
-def test_process_job_handles_ollama_error(worker: CerebroWorker, worker_config: WorkerConfig) -> None:
+def test_process_job_handles_ollama_error(worker: WorkerCore, worker_config: WorkerConfig) -> None:
     """Worker should wrap Ollama connectivity errors into result payload."""
     responses.post(worker_config.ollama_url, status=404)
     job = {
@@ -69,13 +71,13 @@ def test_process_job_handles_ollama_error(worker: CerebroWorker, worker_config: 
     assert "404 Client Error" in result["error"]
 
 
-def test_process_job_requires_messages(worker: CerebroWorker) -> None:
+def test_process_job_requires_messages(worker: WorkerCore) -> None:
     """Jobs without message payloads should be rejected."""
     result = worker._process_job({"job_id": "abc123", "messages": []})
     assert result is None
 
 
-def test_parse_ollama_response_requires_message(worker: CerebroWorker) -> None:
+def test_parse_ollama_response_requires_message(worker: WorkerCore) -> None:
     """Parsing fails gracefully when the message key is missing."""
     class DummyResponse:
         def json(self) -> dict[str, Any]:

@@ -1,0 +1,16 @@
+{
+  "cerebro_url": "http://localhost:5000",
+  "ollama_url": "http://localhost:11434/api/chat",
+  "worker_id": "",
+  "model_name": "phi4-mini",
+  "gpu_threshold": 30,
+  "check_gpu": true,
+  "poll_interval": 2.0,
+  "max_backoff": 30.0,
+  "request_timeout": 30.0,
+  "log_level": "INFO",
+  "start_on_launch": false,
+  "start_minimized": true,
+  "gaming_mode_hours": 6,
+  "default_metadata": null
+}
