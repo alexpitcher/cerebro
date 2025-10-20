@@ -1,0 +1,15 @@
+.git
+.github
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+env/
+build/
+dist/
+.mypy_cache/
+.DS_Store
+docker-compose.yml
+worker/.venv/
+worker/__pycache__/
+worker/.pytest_cache/
