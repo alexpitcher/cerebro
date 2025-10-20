@@ -32,22 +32,19 @@ jobs:
         run: |
           pyinstaller worker/build.spec
 
-      - name: Build service executable
-        run: |
-          pyinstaller worker/build_service.spec
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
 
       - name: Stage bundle
         shell: pwsh
         run: |
-          $bundle = "dist/CerebroWorkerBundle"
-          New-Item -ItemType Directory -Path $bundle -Force | Out-Null
-          Copy-Item dist/CerebroWorker.exe $bundle/ -Force
-          Copy-Item dist/CerebroWorkerService.exe $bundle/ -Force
-          Copy-Item worker/config.json $bundle/ -Force
-          Copy-Item .env.example $bundle/ -Force
-          Copy-Item worker/install_service.ps1 $bundle/ -Force
-          Copy-Item worker/BUILD.md $bundle/ -Force
-          Compress-Archive -Path "$bundle/*" -DestinationPath dist/CerebroWorkerBundle.zip -Force
+          Copy-Item worker/config.json dist/config.json -Force
+          Copy-Item .env.example dist/.env.example -Force
+          Copy-Item worker/BUILD.md dist/BUILD.md -Force
+
+      - name: Build installer
+        run: |
+          "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" worker/installer.iss
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -55,8 +52,7 @@ jobs:
           name: cerebro-worker-windows
           path: |
             dist/CerebroWorker.exe
-            dist/CerebroWorkerService.exe
-            dist/CerebroWorkerBundle.zip
+            dist/CerebroWorkerInstaller.exe
 
       - name: Create Release
         if: github.ref_type == 'tag'
@@ -64,5 +60,4 @@ jobs:
         with:
           files: |
             dist/CerebroWorker.exe
-            dist/CerebroWorkerService.exe
-            dist/CerebroWorkerBundle.zip
+            dist/CerebroWorkerInstaller.exe

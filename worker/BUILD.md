@@ -1,71 +1,57 @@
-# Cerebro Worker GUI Packaging Guide
+# Cerebro Worker Packaging Guide
 
-## Prerequisites
+## Build Prerequisites
 
 - Windows 10/11
 - Python 3.11+
 - Visual C++ Build Tools (recommended)
-- Install build dependencies:
+- Inno Setup 6 (`choco install innosetup -y`)
+
+Install Python dependencies once:
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
+pip install -r ..\requirements.txt
 pip install -r gui_requirements.txt
 pip install pyinstaller
 ```
 
-## Building the Executable
-
-1. Open **Developer PowerShell** in the `worker` directory.
-2. Activate the virtual environment if not already active.
-3. Run the build script:
+## Build Steps
 
 ```powershell
-build.bat
+# From the repo root (or cd worker and adjust paths)
+pyinstaller worker/build.spec
+
+# Stage templates for the installer
+copy worker\config.json dist\config.json
+copy .env.example dist\.env.example
+copy worker\BUILD.md dist\BUILD.md
+
+# Build installer
+"C:\Program Files (x86)\Inno Setup 6\ISCC.exe" worker\installer.iss
 ```
 
-The script cleans previous artifacts, invokes PyInstaller using `build.spec`, and stages the output in `dist/`.
+Outputs:
 
-## Output
+- `dist\CerebroWorker.exe` – single-file GUI worker.
+- `dist\CerebroWorkerInstaller.exe` – installer that copies files to `%LOCALAPPDATA%\Programs\CerebroWorker` and optionally creates a Run-at-logon entry.
 
-- `dist/CerebroWorker.exe` – single-file executable
-- `dist/CerebroWorker/` – unpacked directory with resources and config (if using one-folder mode)
-- `dist/config.json` – default GUI configuration
-- `.env.example` – copied for convenience
-
-Estimated executable size: ~120–150 MB (PyQt6 runtime bundled).
-
-## Testing the Build
-
-1. Run the executable:
+## Post-build Smoke Test
 
 ```powershell
-dist\CerebroWorker.exe
+dist\CerebroWorkerInstaller.exe
 ```
 
-2. Confirm the system tray icon appears and you can submit a job via the dashboard (`http://localhost:5000/`).
-3. Verify log output in `worker.log` and GUI log viewer.
+Install for the current user, launch the tray app, submit a test job, and confirm:
 
-## Distribution Notes
+- The worker selects an installed Ollama model (Settings → Model list).
+- Logs appear under `%LOCALAPPDATA%\CerebroWorker\worker.log`.
+- Jobs show worker/model tags on the dashboard (`http://localhost:5000/`).
 
-- Distribute `CerebroWorker.exe` together with `config.json` and `.env.example` if users need editable defaults.
-- GPU checks require `nvidia-smi` present on the target machine.
-- When packaging for environments without PyQt6 installed, ensure `gui_requirements.txt` dependencies are pre-installed.
+## Notes
 
-## Optional: Create a Windows Service
-
-You can run the GUI worker via NSSM to keep it running in the background:
-
-```powershell
-nssm install CerebroWorker "C:\path\to\CerebroWorker.exe"
-nssm set CerebroWorker AppDirectory "C:\path\to"
-nssm start CerebroWorker
-```
-
-Configure service recovery options (restart on failure) as needed.
-
-## Known Limitations
-
-- Gaming mode overlay is purely visual; ensure the worker is paused before expecting GPU to be free.
-- Notifications rely on Windows toast support.
-- For large log files, the log viewer trims to the last 500 lines.
+- Configuration lives in `%LOCALAPPDATA%\CerebroWorker\config.json`. The GUI saves changes automatically on exit.
+- The installer ships `.env.example` as a template; `.env` variables override config defaults.
+- GPU checks require `nvidia-smi` on the path (ignored when unavailable).
+- Linux/macOS builds can still use `python worker/gui_worker.py`, but the Windows installer is the supported distribution.

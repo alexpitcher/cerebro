@@ -138,24 +138,18 @@ To run the manager API locally:
 flask --app manager.server:app run --port 5000
 ```
 
-Launch the worker (optional):
+Launch the CLI worker (optional):
 
 ```bash
 python worker/worker.py
 ```
 
-### Windows GUI & Service
+### Windows Tray Worker
 
-A PyQt-based tray controller and Windows service are packaged with each release:
-
-- Download the latest assets from the GitHub Releases page (`CerebroWorkerBundle.zip`).
-- Extract and run `CerebroWorker.exe` for the interactive tray app.
-- To install the background service (Administrator required):
-  ```powershell
-  Set-ExecutionPolicy -Scope Process Bypass
-  ./install_service.ps1
-  ```
-  This copies the executables to `C:\Program Files\CerebroWorker`, installs the `CerebroWorkerService`, and starts it automatically.
+- Download `CerebroWorkerInstaller.exe` from the latest GitHub release.
+- Run the installer (no admin rights needed). Files are placed under `%LOCALAPPDATA%\Programs\CerebroWorker` and configuration lives in `%LOCALAPPDATA%\CerebroWorker\config.json`.
+- Start the tray app, open **Settings**, and pick a model. The dropdown is populated from Ollama; if your desired model is missing the worker falls back automatically (preferring `phi*`, `llama*`, `qwen*`, `gemma*`, `deepseek*`).
+- Enable “Run Cerebro Worker at logon” to register a per-user startup entry; disable it in Settings to remove the entry.
 
 ## Configuration
 
@@ -174,7 +168,7 @@ All configuration values can be supplied via environment variables or a `.env` f
 | `MANAGER_DEBUG_LOG`  | `false` | When `true`, log full prompts/results and every worker poll |
 | `MODEL_NAME`         | `phi4-mini` | Desired Ollama model (worker falls back to closest installed match) |
 
-If the requested Ollama model is unavailable, the worker queries `/api/tags` and switches to the best available option (preferring `phi*`, then `llama*`, `qwen*`, `gemma*`, `deepseek*`).
+If the requested Ollama model is unavailable, the worker queries `/api/tags` and switches to the best available option (preferring `phi*`, then `llama*`, `qwen*`, `gemma*`, `deepseek*`). The dashboard lists each job with `Worker` and `Model` tags so you can see which agent handled it.
 
 ## License
 

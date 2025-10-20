@@ -17,7 +17,7 @@ class StatsDialog(QDialog):
         self.setWindowTitle("Worker Statistics")
         self.resize(360, 260)
         self.timer = QTimer(self)
-        self.timer.setInterval(5000)
+        self.timer.setInterval(10000)
         self.timer.timeout.connect(self.refresh)
 
         self.label_status = QLabel("unknown")

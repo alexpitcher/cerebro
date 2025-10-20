@@ -53,6 +53,8 @@ class JobRecord:
     completed_at: float | None = None
     result: dict[str, Any] | None = None
     error: str | None = None
+    worker_id: str | None = None
+    worker_model: str | None = None
 
     def to_json(self) -> str:
         """Serialize the record to a JSON string."""
@@ -67,6 +69,8 @@ class JobRecord:
             "completed_at": self.completed_at,
             "result": self.result,
             "error": self.error,
+            "worker_id": self.worker_id,
+            "worker_model": self.worker_model,
         }
         return json.dumps(payload)
 
@@ -134,7 +138,7 @@ class JobQueue:
         LOGGER.info("Submitted job %s", job_id)
         return job_id
 
-    def get_next_job(self) -> dict[str, Any] | None:
+    def get_next_job(self, worker_id: str | None = None) -> dict[str, Any] | None:
         """Retrieve the next job for processing, blocking up to configured timeout."""
         timeout = max(self.config.redis_block_timeout, 0)
         job_id: str | None = None
@@ -160,6 +164,17 @@ class JobQueue:
         job.status = JobStatus.PROCESSING
         job.started_at = time.time()
         job.updated_at = job.started_at
+        if worker_id:
+            job.worker_id = worker_id
+            info = self.get_worker(worker_id)
+            if info:
+                job.worker_model = info.get("metadata", {}).get("model")
+        metadata = job.metadata or {}
+        if worker_id:
+            metadata.setdefault("worker_id", worker_id)
+        if job.worker_model:
+            metadata.setdefault("worker_model", job.worker_model)
+        job.metadata = metadata or None
         self._save_job(job)
 
         try:
@@ -319,6 +334,19 @@ class JobQueue:
                 continue
             results.append(record)
         return results
+
+    def get_worker(self, worker_id: str) -> dict[str, Any] | None:
+        try:
+            data = self.redis.get(self._worker_key(worker_id))
+        except RedisError as exc:
+            LOGGER.exception("Failed to load worker %s", worker_id)
+            raise JobQueueError("Failed to load worker metadata") from exc
+        if not data:
+            return None
+        try:
+            return json.loads(data)
+        except json.JSONDecodeError:
+            return None
 
     def _touch_history(self, job_id: str) -> None:
         try:

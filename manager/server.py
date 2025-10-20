@@ -124,7 +124,7 @@ def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
         else:
             LOGGER.debug("Worker %s requested next job.", worker_id)
         try:
-            job = job_queue.get_next_job()
+            job = job_queue.get_next_job(worker_id)
         except JobQueueError as exc:
             LOGGER.exception("Failed to fetch next job")
             return _error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -292,6 +292,8 @@ def _serialize_job_summary(job: JobRecord) -> dict[str, Any]:
         "metadata": job.metadata,
         "messages": job.messages,
         "result": job.result,
+        "worker_id": job.worker_id,
+        "worker_model": job.worker_model,
     }
 
 

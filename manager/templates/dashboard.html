@@ -110,6 +110,19 @@
         color: #b91c1c;
         font-weight: 600;
       }
+      .tags {
+        margin-top: 0.5rem;
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+      .tag {
+        background: #e5e7eb;
+        color: #111827;
+        padding: 0.2rem 0.6rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+      }
     </style>
   </head>
   <body>
@@ -130,7 +143,10 @@
       </form>
 
       <section>
-        <h2>Recent Jobs</h2>
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <h2>Recent Jobs</h2>
+          <button type="button" id="refreshJobs">Refresh</button>
+        </div>
         <div id="jobs" class="jobs"></div>
       </section>
     </main>
@@ -138,6 +154,7 @@
       const form = document.getElementById("jobForm");
       const jobsContainer = document.getElementById("jobs");
       const statusEl = document.getElementById("formStatus");
+      const refreshButton = document.getElementById("refreshJobs");
 
       async function fetchRecentJobs() {
         try {
@@ -176,6 +193,10 @@
                 ? `<p class="error"><strong>Error:</strong> ${job.error}</p>`
                 : ""
             }
+            <div class="tags">
+              ${job.worker_id ? `<span class="tag">Worker: ${job.worker_id}</span>` : ""}
+              ${job.worker_model ? `<span class="tag">Model: ${job.worker_model}</span>` : ""}
+            </div>
             <p><strong>Input Messages:</strong></p>
             <pre>${JSON.stringify(job.messages, null, 2)}</pre>
             <p><strong>Result:</strong></p>
@@ -237,8 +258,10 @@
         }
       });
 
+      refreshButton.addEventListener("click", () => fetchRecentJobs());
+
       fetchRecentJobs();
-      setInterval(fetchRecentJobs, 8000);
+      setInterval(fetchRecentJobs, 10000);
     </script>
   </body>
 </html>
