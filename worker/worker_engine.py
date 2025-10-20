@@ -19,6 +19,8 @@ from requests.exceptions import RequestException
 
 LOGGER = logging.getLogger("cerebro.worker")
 
+CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 
 # --------------------------------------------------------------------------- #
 # Configuration
@@ -466,6 +468,7 @@ class WorkerCore:
                 ],
                 stderr=subprocess.STDOUT,
                 text=True,
+                creationflags=CREATE_NO_WINDOW,
             )
         except (subprocess.CalledProcessError, FileNotFoundError) as exc:
             self.logger.debug("nvidia-smi unavailable or failed: %s", exc, extra={"status": "gpu_unknown"})
