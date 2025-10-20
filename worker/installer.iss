@@ -16,7 +16,7 @@ WizardStyle=modern
 
 [Files]
 Source: "..\dist\CerebroWorker.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\dist\config.json"; DestDir: "{localappdata}\CerebroWorker"; Flags: ignoreversion createallsubdirs onlyifdoesntexist
+Source: "..\dist\config.json"; DestDir: "{localappdata}\CerebroWorker"; Flags: ignoreversion onlyifdoesntexist
 Source: "..\dist\.env.example"; DestDir: "{localappdata}\CerebroWorker"; Flags: ignoreversion
 Source: "..\dist\BUILD.md"; DestDir: "{app}"; Flags: ignoreversion
 
