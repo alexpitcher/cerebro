@@ -35,7 +35,13 @@ def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
             LOGGER.exception("Failed to submit job")
             return _error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
 
-        LOGGER.info("Accepted job %s (messages=%s)", job_id, len(messages))
+        preview = _preview_messages(messages)
+        LOGGER.info(
+            "Accepted job %s (messages=%s)%s",
+            job_id,
+            len(messages),
+            f" preview={preview}" if preview else "",
+        )
         return jsonify({"job_id": job_id, "status": JobStatus.QUEUED.value}), HTTPStatus.CREATED
 
     @api.route("/get_job", methods=["POST"])
@@ -65,7 +71,13 @@ def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
                 LOGGER.info("No jobs available for worker %s.", worker_id)
             return "", HTTPStatus.NO_CONTENT
 
-        LOGGER.info("Assigned job %s to worker %s.", job["job_id"], worker_id)
+        preview = _preview_messages(job.get("messages") or [])
+        LOGGER.info(
+            "Assigned job %s to worker %s%s.",
+            job["job_id"],
+            worker_id,
+            f" preview={preview}" if preview else "",
+        )
         return jsonify(job), HTTPStatus.OK
 
     @api.route("/complete_job", methods=["POST"])
@@ -97,11 +109,14 @@ def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
             LOGGER.exception("Failed to complete job %s", job_id)
             return _error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
 
+        result_preview = _preview_result(result)
         LOGGER.info(
-            "Worker %s reported job %s as %s.",
+            "Worker %s reported job %s as %s%s%s.",
             worker_id,
             job_id,
             status.value,
+            f" result={result_preview}" if result_preview else "",
+            f" error={error!r}" if error else "",
         )
         return jsonify(_serialize_job(job_record)), HTTPStatus.OK
 
@@ -176,6 +191,38 @@ def _require_json() -> dict[str, Any]:
 def _error_response(message: str, status: HTTPStatus):
     """Return a standardized JSON error response."""
     return jsonify({"error": message, "status": status.phrase}), int(status)
+
+
+def _preview_messages(messages: list[dict[str, Any]]) -> str | None:
+    """Return a concise preview of message content for logging."""
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, str) and content:
+            trimmed = content.replace("\n", " ").strip()
+            if len(trimmed) > 80:
+                trimmed = f"{trimmed[:77]}..."
+            return trimmed
+    return None
+
+
+def _preview_result(result: dict[str, Any] | None) -> str | None:
+    """Extract a human-friendly preview from result payloads."""
+    if not isinstance(result, dict):
+        return None
+    message = result.get("message")
+    if isinstance(message, dict):
+        content = message.get("content")
+        if isinstance(content, str):
+            snippet = content.replace("\n", " ").strip()
+            if len(snippet) > 80:
+                snippet = f"{snippet[:77]}..."
+            return snippet
+    if isinstance(result.get("response"), str):
+        snippet = result["response"].replace("\n", " ").strip()
+        if len(snippet) > 80:
+            snippet = f"{snippet[:77]}..."
+        return snippet
+    return None
 
 
 def create_wsgi_app() -> Flask:

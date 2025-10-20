@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import pytest
 import fakeredis
 from flask import Flask
@@ -52,11 +53,60 @@ def _submit_sample_job(client):
     return payload["job_id"]
 
 
-def test_job_lifecycle(client):
-    job_id = _submit_sample_job(client)
+def test_job_lifecycle(client, caplog):
+    with caplog.at_level(logging.INFO, logger="manager.server"):
+        job_id = _submit_sample_job(client)
 
-    # Worker pulls job
-    response = client.post("/get_job")
+        # Worker pulls job
+        response = client.post("/get_job", headers={"X-Worker-ID": "worker-1"})
+        assert response.status_code == 200
+        job_payload = response.get_json()
+        assert job_payload is not None
+        assert job_payload["job_id"] == job_id
+        assert job_payload["messages"][0]["content"] == "Hello, Cerebro!"
+
+        # Worker completes job successfully
+        completion = client.post(
+            "/complete_job",
+            headers={"X-Worker-ID": "worker-1"},
+            json={
+                "job_id": job_id,
+                "status": JobStatus.COMPLETED.value,
+                "result": {"message": {"content": "Done"}},
+            },
+        )
+        assert completion.status_code == 200
+        job_data = completion.get_json()
+        assert job_data is not None
+        assert job_data["status"] == JobStatus.COMPLETED.value
+        assert job_data["result"] == {"message": {"content": "Done"}}
+
+        # Client can poll for result
+        result_response = client.get(f"/get_result/{job_id}")
+        assert result_response.status_code == 200
+        result_payload = result_response.get_json()
+        assert result_payload is not None
+        assert result_payload["result"] == {"message": {"content": "Done"}}
+
+    # Validate logging previews
+    log_messages = [record.getMessage() for record in caplog.records]
+    assert any("preview=Hello, Cerebro!" in message for message in log_messages)
+    assert any("result=Done" in message for message in log_messages)
+
+
+def test_stats_and_health(client):
+    stats_before = client.get("/stats")
+    assert stats_before.status_code == 200
+    assert stats_before.get_json() == {"queued": 0, "processing": 0}
+
+    _submit_sample_job(client)
+    stats_after_submit = client.get("/stats")
+    payload = stats_after_submit.get_json()
+    assert payload == {"queued": 1, "processing": 0}
+
+    health = client.get("/health")
+    assert health.status_code == 200
+    assert health.get_json() == {"status": "ok"}
     assert response.status_code == 200
     job_payload = response.get_json()
     assert job_payload is not None
