@@ -90,10 +90,10 @@ def test_job_lifecycle(client, caplog):
         assert result_payload is not None
         assert result_payload["result"] == {"message": {"content": "Done"}}
 
-    # Validate logging previews
+    # Validate logging captures payloads/results under debug logging
     log_messages = [record.getMessage() for record in caplog.records]
-    assert any("preview=Hello, Cerebro!" in message for message in log_messages)
-    assert any("result=Done" in message for message in log_messages)
+    assert any("payload=[{'content': 'Hello, Cerebro!'" in message for message in log_messages)
+    assert any("result={'message': {'content': 'Done'}}" in message for message in log_messages)
 
 
 def test_stats_and_health(client):
@@ -109,6 +109,26 @@ def test_stats_and_health(client):
     health = client.get("/health")
     assert health.status_code == 200
     assert health.get_json() == {"status": "ok"}
+
+
+def test_worker_registration(client):
+    register = client.post(
+        "/register_worker",
+        json={"worker_id": "worker-abc", "hostname": "test-host"},
+    )
+    assert register.status_code == 201
+
+    workers = client.get("/workers")
+    assert workers.status_code == 200
+    data = workers.get_json()
+    assert isinstance(data, list)
+    assert any(entry["worker_id"] == "worker-abc" for entry in data)
+
+    deregister = client.post("/deregister_worker", json={"worker_id": "worker-abc"})
+    assert deregister.status_code == 200
+
+    workers_after = client.get("/workers").get_json()
+    assert all(entry["worker_id"] != "worker-abc" for entry in workers_after)
 
 
 def test_recent_jobs_endpoint(client):
@@ -130,11 +150,7 @@ def test_recent_jobs_endpoint(client):
     assert isinstance(payload, list)
     assert payload[0]["job_id"] == job_id
     assert payload[0]["result_preview"] == "Done"
-    assert response.status_code == 200
-    job_payload = response.get_json()
-    assert job_payload is not None
-    assert job_payload["job_id"] == job_id
-    assert job_payload["messages"][0]["content"] == "Hello, Cerebro!"
+    assert payload[0]["messages"][0]["content"] == "Hello, Cerebro!"
 
     # Worker completes job successfully
     completion = client.post(

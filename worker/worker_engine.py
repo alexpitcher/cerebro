@@ -168,6 +168,8 @@ class WorkerCore:
 
     def __init__(self, config: WorkerConfig, callbacks: WorkerCallbacks | None = None):
         self.config = config
+        if not config.worker_id:
+            config.worker_id = socket.gethostname()
         self.callbacks = callbacks or WorkerCallbacks()
         self.stop_event = threading.Event()
         self.pause_event = threading.Event()
@@ -186,10 +188,12 @@ class WorkerCore:
         """Start polling for jobs until shutdown."""
         self._update_state("starting")
         self.logger.info("Worker started.", extra={"status": "startup"})
+        self._register_worker()
         try:
             self._loop()
         finally:
             self._update_state("stopped")
+            self._deregister_worker()
             self.logger.info("Worker shutdown complete.", extra={"status": "shutdown"})
 
     def shutdown(self) -> None:
@@ -490,6 +494,41 @@ class WorkerCore:
     def state(self) -> str:
         with self.state_lock:
             return self._state
+
+    # ------------------------------------------------------------------ #
+    # Registration helpers
+    # ------------------------------------------------------------------ #
+
+    def _register_worker(self) -> None:
+        payload = {
+            "worker_id": self.config.worker_id,
+            "hostname": socket.gethostname(),
+        }
+        try:
+            response = self.session.post(
+                f"{self.config.cerebro_url}/register_worker",
+                json=payload,
+                timeout=self.config.request_timeout,
+            )
+            response.raise_for_status()
+            self.logger.info("Registered worker with manager.", extra={"status": "registered"})
+        except RequestException as exc:
+            self.logger.warning("Failed to register worker: %s", exc, extra={"status": "warning"})
+
+    def _deregister_worker(self) -> None:
+        payload = {
+            "worker_id": self.config.worker_id,
+        }
+        try:
+            response = self.session.post(
+                f"{self.config.cerebro_url}/deregister_worker",
+                json=payload,
+                timeout=self.config.request_timeout,
+            )
+            response.raise_for_status()
+            self.logger.info("Deregistered worker from manager.", extra={"status": "stopped"})
+        except RequestException as exc:
+            self.logger.warning("Failed to deregister worker: %s", exc, extra={"status": "warning"})
 
 
 # --------------------------------------------------------------------------- #

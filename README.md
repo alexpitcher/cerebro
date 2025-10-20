@@ -103,6 +103,9 @@ cerebro/
 | GET    | `/get_result/<id>`   | Poll for job status and results           |
 | GET    | `/stats`             | Retrieve queue metrics                    |
 | GET    | `/health`            | Health check                              |
+| POST   | `/register_worker`   | Register worker presence (logged)         |
+| POST   | `/deregister_worker` | Remove worker state                       |
+| GET    | `/workers`           | List workers known to the manager         |
 
 Example submission payload:
 
@@ -139,6 +142,19 @@ Launch the worker (optional):
 ```bash
 python worker/worker.py
 ```
+
+### Windows GUI & Service
+
+A PyQt-based tray controller and Windows service are packaged with each release:
+
+- Download the latest assets from the GitHub Releases page (`CerebroWorkerBundle.zip`).
+- Extract and run `CerebroWorker.exe` for the interactive tray app.
+- To install the background service (Administrator required):
+  ```powershell
+  Set-ExecutionPolicy -Scope Process Bypass
+  ./install_service.ps1
+  ```
+  This copies the executables to `C:\Program Files\CerebroWorker`, installs the `CerebroWorkerService`, and starts it automatically.
 
 ## Configuration
 

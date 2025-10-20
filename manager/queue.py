@@ -84,6 +84,8 @@ class JobQueue:
     queue_key: Final[str] = "cerebro:queue"
     processing_key: Final[str] = "cerebro:processing"
     job_key_prefix: Final[str] = "cerebro:job:"
+    workers_key: Final[str] = "cerebro:workers"
+    worker_key_prefix: Final[str] = "cerebro:worker:"
     history_key: Final[str] = "cerebro:history"
 
     def __init__(self, config: AppConfig, redis_client: Redis | None = None):
@@ -242,6 +244,9 @@ class JobQueue:
     def _job_key(self, job_id: str) -> str:
         return f"{self.job_key_prefix}{job_id}"
 
+    def _worker_key(self, worker_id: str) -> str:
+        return f"{self.worker_key_prefix}{worker_id}"
+
     def _load_job(self, job_id: str) -> JobRecord | None:
         job_key = self._job_key(job_id)
         try:
@@ -263,6 +268,57 @@ class JobQueue:
         except RedisError as exc:
             LOGGER.exception("Failed to persist job %s", job.job_id)
             raise JobQueueError("Failed to save job") from exc
+
+    # ------------------------------------------------------------------ #
+    # Worker registration helpers
+    # ------------------------------------------------------------------ #
+
+    def register_worker(self, worker_id: str, metadata: dict[str, Any]) -> None:
+        record = {
+            "worker_id": worker_id,
+            "metadata": metadata,
+            "registered_at": time.time(),
+        }
+        try:
+            with self.redis.pipeline() as pipe:
+                pipe.set(self._worker_key(worker_id), json.dumps(record))
+                pipe.sadd(self.workers_key, worker_id)
+                pipe.execute()
+        except RedisError as exc:
+            LOGGER.exception("Failed to register worker %s", worker_id)
+            raise JobQueueError("Failed to register worker") from exc
+
+    def deregister_worker(self, worker_id: str) -> None:
+        try:
+            with self.redis.pipeline() as pipe:
+                pipe.delete(self._worker_key(worker_id))
+                pipe.srem(self.workers_key, worker_id)
+                pipe.execute()
+        except RedisError as exc:
+            LOGGER.exception("Failed to deregister worker %s", worker_id)
+            raise JobQueueError("Failed to deregister worker") from exc
+
+    def list_workers(self) -> list[dict[str, Any]]:
+        try:
+            worker_ids = self.redis.smembers(self.workers_key)
+        except RedisError as exc:
+            LOGGER.exception("Failed to list workers")
+            raise JobQueueError("Failed to list workers") from exc
+
+        results: list[dict[str, Any]] = []
+        for worker_id in worker_ids:
+            try:
+                data = self.redis.get(self._worker_key(worker_id))
+            except RedisError:
+                continue
+            if not data:
+                continue
+            try:
+                record = json.loads(data)
+            except json.JSONDecodeError:
+                continue
+            results.append(record)
+        return results
 
     def _touch_history(self, job_id: str) -> None:
         try:

@@ -35,6 +35,53 @@ def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
         jobs = job_queue.list_recent_jobs(limit)
         return jsonify([_serialize_job_summary(job) for job in jobs])
 
+    @api.route("/register_worker", methods=["POST"])
+    def register_worker_route() -> Any:
+        payload = _require_json()
+        worker_id = payload.get("worker_id") or request.headers.get("X-Worker-ID")
+        if not worker_id:
+            return _error_response("`worker_id` is required.", HTTPStatus.BAD_REQUEST)
+
+        metadata = payload.get("metadata") or {}
+        hostname = payload.get("hostname") or metadata.get("hostname") or request.remote_addr
+        metadata.update(
+            {
+                "hostname": hostname,
+                "user_agent": request.headers.get("User-Agent"),
+            }
+        )
+        try:
+            job_queue.register_worker(worker_id, metadata)
+        except JobQueueError as exc:
+            LOGGER.exception("Failed to register worker %s", worker_id)
+            return _error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
+
+        LOGGER.info("Worker %s registered (host=%s)", worker_id, hostname)
+        return jsonify({"status": "registered"}), HTTPStatus.CREATED
+
+    @api.route("/deregister_worker", methods=["POST"])
+    def deregister_worker_route() -> Any:
+        payload = _require_json()
+        worker_id = payload.get("worker_id") or request.headers.get("X-Worker-ID")
+        if not worker_id:
+            return _error_response("`worker_id` is required.", HTTPStatus.BAD_REQUEST)
+        try:
+            job_queue.deregister_worker(worker_id)
+        except JobQueueError as exc:
+            LOGGER.exception("Failed to deregister worker %s", worker_id)
+            return _error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
+
+        LOGGER.info("Worker %s deregistered", worker_id)
+        return jsonify({"status": "deregistered"}), HTTPStatus.OK
+
+    @api.route("/workers", methods=["GET"])
+    def list_workers_route() -> Any:
+        try:
+            workers = [_serialize_worker(record) for record in job_queue.list_workers()]
+        except JobQueueError as exc:
+            return _error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
+        return jsonify(workers), HTTPStatus.OK
+
     @api.route("/submit_job", methods=["POST"])
     def submit_job() -> Any:
         payload = _require_json()
@@ -243,6 +290,14 @@ def _serialize_job_summary(job: JobRecord) -> dict[str, Any]:
         "metadata": job.metadata,
         "messages": job.messages,
         "result": job.result,
+    }
+
+
+def _serialize_worker(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "worker_id": record.get("worker_id"),
+        "metadata": record.get("metadata", {}),
+        "registered_at": record.get("registered_at"),
     }
 
 

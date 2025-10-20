@@ -9,10 +9,19 @@ import sys
 import threading
 from pathlib import Path
 
-import servicemanager
-import win32event
-import win32service
-import win32serviceutil
+try:
+    import servicemanager  # type: ignore[import]
+except ImportError:
+    servicemanager = None  # type: ignore[assignment]
+
+try:
+    import win32event  # type: ignore[import]
+    import win32service  # type: ignore[import]
+    import win32serviceutil  # type: ignore[import]
+except ImportError as exc:  # pragma: no cover - runtime guard
+    raise ImportError(
+        "pywin32 is required to run CerebroWorkerService. Install pywin32 on Windows."
+    ) from exc
 
 from worker.worker_engine import (  # reuse core logic
     WorkerCallbacks,
@@ -66,7 +75,8 @@ class CerebroWorkerService(win32serviceutil.ServiceFramework):
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
 
     def SvcDoRun(self):
-        servicemanager.LogInfoMsg("Cerebro Worker service starting...")
+        if servicemanager:
+            servicemanager.LogInfoMsg("Cerebro Worker service starting...")
         config_file = self.config_dir / "config.json"
         config_data = _load_config_from_file(config_file)
         _apply_config_overrides(config_data)
@@ -85,7 +95,8 @@ class CerebroWorkerService(win32serviceutil.ServiceFramework):
         self.thread = threading.Thread(target=self.worker.run, daemon=True)
         self.thread.start()
 
-        servicemanager.LogInfoMsg("Cerebro Worker service running.")
+        if servicemanager:
+            servicemanager.LogInfoMsg("Cerebro Worker service running.")
         win32event.WaitForSingleObject(self.stop_event, win32event.INFINITE)
 
         if self.worker:
@@ -94,7 +105,8 @@ class CerebroWorkerService(win32serviceutil.ServiceFramework):
             self.thread.join(timeout=15)
         logging.getLogger().removeHandler(file_handler)
         file_handler.close()
-        servicemanager.LogInfoMsg("Cerebro Worker service stopped.")
+        if servicemanager:
+            servicemanager.LogInfoMsg("Cerebro Worker service stopped.")
 
     def SvcStop(self):
         self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
@@ -103,7 +115,11 @@ class CerebroWorkerService(win32serviceutil.ServiceFramework):
 
 
 def main() -> None:
-    if len(sys.argv) == 1:
+if len(sys.argv) == 1:
+        if not servicemanager:
+            raise ImportError(
+                "servicemanager is unavailable. Run this binary only on Windows and ensure pywin32 is installed."
+            )
         servicemanager.Initialize()
         servicemanager.PrepareToHostSingle(CerebroWorkerService)
         servicemanager.StartServiceCtrlDispatcher()
