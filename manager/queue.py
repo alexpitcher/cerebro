@@ -84,6 +84,7 @@ class JobQueue:
     queue_key: Final[str] = "cerebro:queue"
     processing_key: Final[str] = "cerebro:processing"
     job_key_prefix: Final[str] = "cerebro:job:"
+    history_key: Final[str] = "cerebro:history"
 
     def __init__(self, config: AppConfig, redis_client: Redis | None = None):
         self.config = config
@@ -93,6 +94,7 @@ class JobQueue:
             db=config.redis_db,
             decode_responses=True,
         )
+        self.history_limit = max(config.job_history_size, 1)
 
     def submit_job(
         self,
@@ -119,11 +121,14 @@ class JobQueue:
             with self.redis.pipeline() as pipe:
                 pipe.set(job_key, record.to_json(), ex=self.config.job_ttl_seconds)
                 pipe.rpush(self.queue_key, job_id)
+                pipe.lpush(self.history_key, job_id)
+                pipe.ltrim(self.history_key, 0, self.history_limit - 1)
                 pipe.execute()
         except RedisError as exc:
             LOGGER.exception("Failed to submit job %s", job_id)
             raise JobQueueError("Failed to submit job") from exc
 
+        self._touch_history(job_id)
         LOGGER.info("Submitted job %s", job_id)
         return job_id
 
@@ -223,6 +228,17 @@ class JobQueue:
             LOGGER.exception("Redis health check failed")
             return False
 
+    def list_recent_jobs(self, limit: int = 10) -> list[JobRecord]:
+        """Return the most recently updated jobs (newest first)."""
+        limit = max(1, limit)
+        job_ids = self.redis.lrange(self.history_key, 0, limit - 1)
+        jobs: list[JobRecord] = []
+        for job_id in job_ids:
+            job = self._load_job(job_id)
+            if job:
+                jobs.append(job)
+        return jobs
+
     def _job_key(self, job_id: str) -> str:
         return f"{self.job_key_prefix}{job_id}"
 
@@ -243,6 +259,17 @@ class JobQueue:
         job_key = self._job_key(job.job_id)
         try:
             self.redis.set(job_key, job.to_json(), ex=self.config.job_ttl_seconds)
+            self._touch_history(job.job_id)
         except RedisError as exc:
             LOGGER.exception("Failed to persist job %s", job.job_id)
             raise JobQueueError("Failed to save job") from exc
+
+    def _touch_history(self, job_id: str) -> None:
+        try:
+            with self.redis.pipeline() as pipe:
+                pipe.lrem(self.history_key, 0, job_id)
+                pipe.lpush(self.history_key, job_id)
+                pipe.ltrim(self.history_key, 0, self.history_limit - 1)
+                pipe.execute()
+        except RedisError:
+            LOGGER.warning("Failed to touch history for job %s", job_id, exc_info=True)

@@ -21,6 +21,8 @@ def app() -> Flask:
         redis_job_timeout=1,
         redis_block_timeout=1,
         job_ttl_seconds=60,
+        job_history_size=20,
+        debug_logging=True,
     )
     fake_redis = fakeredis.FakeRedis(decode_responses=True)
     job_queue = JobQueue(config=config, redis_client=fake_redis)
@@ -107,6 +109,27 @@ def test_stats_and_health(client):
     health = client.get("/health")
     assert health.status_code == 200
     assert health.get_json() == {"status": "ok"}
+
+
+def test_recent_jobs_endpoint(client):
+    job_id = _submit_sample_job(client)
+    client.post("/get_job", headers={"X-Worker-ID": "worker-1"})
+    client.post(
+        "/complete_job",
+        headers={"X-Worker-ID": "worker-1"},
+        json={
+            "job_id": job_id,
+            "status": JobStatus.COMPLETED.value,
+            "result": {"message": {"content": "Done"}},
+        },
+    )
+
+    response = client.get("/recent_jobs?limit=5")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert isinstance(payload, list)
+    assert payload[0]["job_id"] == job_id
+    assert payload[0]["result_preview"] == "Done"
     assert response.status_code == 200
     job_payload = response.get_json()
     assert job_payload is not None

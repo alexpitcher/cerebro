@@ -25,7 +25,7 @@ Cerebro is a lightweight distributed job queue tailored for LLM workloads. It ex
    ```bash
    docker compose up -d
    ```
-4. The API is available at `http://localhost:5000`.
+4. The API and dashboard are available at `http://localhost:5000/`.
 
 ## Docker Compose
 
@@ -46,6 +46,8 @@ services:
       REDIS_JOB_TIMEOUT: ${REDIS_JOB_TIMEOUT:-30}
       REDIS_BLOCK_TIMEOUT: ${REDIS_BLOCK_TIMEOUT:-5}
       JOB_TTL_SECONDS: ${JOB_TTL_SECONDS:-3600}
+      MANAGER_DEBUG_LOG: ${MANAGER_DEBUG_LOG:-false}
+      JOB_HISTORY_SIZE: ${JOB_HISTORY_SIZE:-50}
     depends_on:
       - redis
 
@@ -61,7 +63,7 @@ volumes:
   redis_data:
 ```
 
-Run `docker compose up -d` from the project root to start both services. To build the image from source instead, run `docker build -t ghcr.io/<you>/cerebro:dev .` and update the `image` reference accordingly.
+Run `docker compose up -d` from the project root to start both services, then visit `http://localhost:5000/` for a lightweight dashboard to submit jobs and inspect recent prompts/results. To build the image from source instead, run `docker build -t ghcr.io/<you>/cerebro:dev .` and update the `image` reference accordingly.
 
 ## Project Layout
 
@@ -151,6 +153,8 @@ All configuration values can be supplied via environment variables or a `.env` f
 | `REDIS_JOB_TIMEOUT`  | `30`    | Worker job processing timeout (seconds) |
 | `REDIS_BLOCK_TIMEOUT`| `5`     | Blocking timeout for worker dequeue (seconds) |
 | `JOB_TTL_SECONDS`    | `3600`  | TTL for job metadata in Redis        |
+| `JOB_HISTORY_SIZE`   | `50`    | Number of recent jobs stored for the dashboard |
+| `MANAGER_DEBUG_LOG`  | `false` | When `true`, log full prompts/results and every worker poll |
 
 ## License
 

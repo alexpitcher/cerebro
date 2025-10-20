@@ -7,7 +7,7 @@ import os
 from http import HTTPStatus
 from typing import Any
 
-from flask import Blueprint, Flask, jsonify, request
+from flask import Blueprint, Flask, current_app, jsonify, render_template, request
 from werkzeug.exceptions import BadRequest
 
 from .config import AppConfig, configure_logging
@@ -19,6 +19,21 @@ LOGGER = logging.getLogger(__name__)
 def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
     """Create the API blueprint with all queue routes."""
     api = Blueprint("manager_api", __name__)
+
+    @api.route("/", methods=["GET"])
+    def dashboard() -> Any:
+        return render_template("dashboard.html")
+
+    @api.route("/recent_jobs", methods=["GET"])
+    def recent_jobs() -> Any:
+        limit_param = request.args.get("limit", "10")
+        try:
+            limit = max(1, min(int(limit_param), 100))
+        except ValueError:
+            return _error_response("`limit` must be an integer.", HTTPStatus.BAD_REQUEST)
+
+        jobs = job_queue.list_recent_jobs(limit)
+        return jsonify([_serialize_job_summary(job) for job in jobs])
 
     @api.route("/submit_job", methods=["POST"])
     def submit_job() -> Any:
@@ -36,18 +51,29 @@ def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
             return _error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
 
         preview = _preview_messages(messages)
-        LOGGER.info(
-            "Accepted job %s (messages=%s)%s",
-            job_id,
-            len(messages),
-            f" preview={preview}" if preview else "",
-        )
+        if _debug_logging_enabled():
+            LOGGER.info(
+                "Accepted job %s with payload=%s metadata=%s",
+                job_id,
+                messages,
+                metadata,
+            )
+        else:
+            LOGGER.info(
+                "Accepted job %s (messages=%s)%s",
+                job_id,
+                len(messages),
+                f" preview={preview}" if preview else "",
+            )
         return jsonify({"job_id": job_id, "status": JobStatus.QUEUED.value}), HTTPStatus.CREATED
 
     @api.route("/get_job", methods=["POST"])
     def get_job() -> Any:
         worker_id = request.headers.get("X-Worker-ID", "unknown")
-        LOGGER.info("Worker %s requested next job.", worker_id)
+        if _debug_logging_enabled():
+            LOGGER.info("Worker %s requested next job.", worker_id)
+        else:
+            LOGGER.debug("Worker %s requested next job.", worker_id)
         try:
             job = job_queue.get_next_job()
         except JobQueueError as exc:
@@ -61,23 +87,36 @@ def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
             except JobQueueError:
                 LOGGER.warning("Unable to gather queue stats while responding 204 to worker %s", worker_id, exc_info=True)
             if queue_stats:
-                LOGGER.info(
+                message = (
                     "No jobs available for worker %s (queued=%s, processing=%s).",
                     worker_id,
                     queue_stats.get("queued"),
                     queue_stats.get("processing"),
                 )
             else:
-                LOGGER.info("No jobs available for worker %s.", worker_id)
+                message = ("No jobs available for worker %s.", worker_id)
+            if _debug_logging_enabled():
+                LOGGER.info(*message)
+            else:
+                LOGGER.debug(*message)
             return "", HTTPStatus.NO_CONTENT
 
         preview = _preview_messages(job.get("messages") or [])
-        LOGGER.info(
-            "Assigned job %s to worker %s%s.",
-            job["job_id"],
-            worker_id,
-            f" preview={preview}" if preview else "",
-        )
+        if _debug_logging_enabled():
+            LOGGER.info(
+                "Assigned job %s to worker %s with payload=%s metadata=%s",
+                job["job_id"],
+                worker_id,
+                job.get("messages"),
+                job.get("metadata"),
+            )
+        else:
+            LOGGER.info(
+                "Assigned job %s to worker %s%s.",
+                job["job_id"],
+                worker_id,
+                f" preview={preview}" if preview else "",
+            )
         return jsonify(job), HTTPStatus.OK
 
     @api.route("/complete_job", methods=["POST"])
@@ -110,14 +149,24 @@ def create_api_blueprint(job_queue: JobQueue) -> Blueprint:
             return _error_response(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
 
         result_preview = _preview_result(result)
-        LOGGER.info(
-            "Worker %s reported job %s as %s%s%s.",
-            worker_id,
-            job_id,
-            status.value,
-            f" result={result_preview}" if result_preview else "",
-            f" error={error!r}" if error else "",
-        )
+        if _debug_logging_enabled():
+            LOGGER.info(
+                "Worker %s reported job %s as %s result=%s error=%s",
+                worker_id,
+                job_id,
+                status.value,
+                result,
+                error,
+            )
+        else:
+            LOGGER.info(
+                "Worker %s reported job %s as %s%s%s.",
+                worker_id,
+                job_id,
+                status.value,
+                f" result={result_preview}" if result_preview else "",
+                f" error={error!r}" if error else "",
+            )
         return jsonify(_serialize_job(job_record)), HTTPStatus.OK
 
     @api.route("/get_result/<job_id>", methods=["GET"])
@@ -180,6 +229,23 @@ def _serialize_job(job: JobRecord) -> dict[str, Any]:
     }
 
 
+def _serialize_job_summary(job: JobRecord) -> dict[str, Any]:
+    """Return a condensed representation for dashboard listings."""
+    return {
+        "job_id": job.job_id,
+        "status": job.status.value,
+        "preview": _preview_messages(job.messages),
+        "result_preview": _preview_result(job.result),
+        "error": job.error,
+        "updated_at": job.updated_at,
+        "created_at": job.created_at,
+        "completed_at": job.completed_at,
+        "metadata": job.metadata,
+        "messages": job.messages,
+        "result": job.result,
+    }
+
+
 def _require_json() -> dict[str, Any]:
     """Parse the request JSON body, returning an object or raising an error."""
     payload = request.get_json(silent=True)
@@ -223,6 +289,16 @@ def _preview_result(result: dict[str, Any] | None) -> str | None:
             snippet = f"{snippet[:77]}..."
         return snippet
     return None
+
+
+def _debug_logging_enabled() -> bool:
+    try:
+        config = current_app.config.get("APP_CONFIG")
+    except RuntimeError:
+        return False
+    if not config:
+        return False
+    return bool(getattr(config, "debug_logging", False))
 
 
 def create_wsgi_app() -> Flask:
