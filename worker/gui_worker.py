@@ -114,19 +114,21 @@ class GuiController(QObject):
         self.worker_engine.error_occurred.connect(self._on_worker_error)
 
         self.stats_cache: Dict[str, Any] = {}
-        self.available_models: List[str] = []
+        self.available_models: List[str] = self._refresh_models(show_dialog=False)
 
         self.stats_dialog = StatsDialog(self._gather_stats)
         self.log_viewer = LogViewer(self.log_path)
-        self.settings_dialog = SettingsDialog(self.config_manager.config, self.available_models, self._refresh_models)
+        self.settings_dialog = SettingsDialog(
+            self.config_manager.config,
+            self.available_models,
+            lambda url, parent: self._refresh_models(url=url, parent=parent),
+        )
         self.settings_dialog.accepted.connect(self._apply_settings)
 
         self._restore_geometry(self.stats_dialog, "stats_geometry")
         self._restore_geometry(self.log_viewer, "log_geometry")
         self.stats_dialog.finished.connect(lambda _: self._save_geometry(self.stats_dialog, "stats_geometry"))
         self.log_viewer.finished.connect(lambda _: self._save_geometry(self.log_viewer, "log_geometry"))
-
-        self.available_models = self._refresh_models(show_dialog=False)
         self.settings_dialog.set_models(self.available_models)
 
         self.tray = TrayManager(
